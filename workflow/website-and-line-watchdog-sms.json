@@ -1,0 +1,740 @@
+{
+  "name": "Template: Website and business line watchdog, texts the owner",
+  "nodes": [
+    {
+      "id": "fe086765-fdee-53ce-ae9f-f998e959d38a",
+      "name": "Every 5 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        200,
+        400
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "d4aed57f-002d-5ef8-8f22-d7e610d04be5",
+      "name": "Your settings",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        420,
+        400
+      ],
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "d9b87de4-f0cb-5ce9-a33c-71be039734e2",
+              "name": "business_name",
+              "type": "string",
+              "value": "Your Business"
+            },
+            {
+              "id": "04db488b-c848-5cb3-849b-a63298b94b44",
+              "name": "business_number",
+              "type": "string",
+              "value": "+15555550100"
+            },
+            {
+              "id": "360100eb-287d-5725-b937-04b162592ab3",
+              "name": "owner_cell",
+              "type": "string",
+              "value": "+15555550199"
+            },
+            {
+              "id": "32f28ab5-c761-5ded-99ad-62f4ebcf704b",
+              "name": "timezone",
+              "type": "string",
+              "value": "America/New_York"
+            },
+            {
+              "id": "cc0bce26-6e06-5f6f-866b-b679b00c7de1",
+              "name": "websites",
+              "type": "string",
+              "value": "https://www.example.com"
+            },
+            {
+              "id": "b394a811-9208-5c62-bb51-fa3059dd7f53",
+              "name": "fails_before_alert",
+              "type": "number",
+              "value": 2
+            },
+            {
+              "id": "333f0cd6-2d7c-589b-a420-8a854e8b95a4",
+              "name": "remind_every_hours",
+              "type": "number",
+              "value": 4
+            },
+            {
+              "id": "bf8b8e54-2047-5804-8f08-e66bb238e67f",
+              "name": "balance_floor",
+              "type": "number",
+              "value": 20
+            },
+            {
+              "id": "4b360bcf-0b95-52ce-ba03-8ac2053a0208",
+              "name": "block_window_minutes",
+              "type": "number",
+              "value": 60
+            },
+            {
+              "id": "4324fb17-8818-59d7-9026-5a396e6c9462",
+              "name": "block_alert_count",
+              "type": "number",
+              "value": 3
+            },
+            {
+              "id": "3b746500-13d8-5e98-a0cb-95a7989f82b9",
+              "name": "quiet_start",
+              "type": "string",
+              "value": "21:00"
+            },
+            {
+              "id": "f0161017-73a3-58c4-b5f2-99ef4049cd75",
+              "name": "quiet_end",
+              "type": "string",
+              "value": "07:00"
+            },
+            {
+              "id": "37306ca2-c93a-5c5e-82ab-c05a3fe2625e",
+              "name": "routing_alerts_at_night",
+              "type": "boolean",
+              "value": true
+            },
+            {
+              "id": "228418a6-6a7e-5143-b570-a01b541d5349",
+              "name": "morning_check_in",
+              "type": "boolean",
+              "value": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "669608d6-17b6-5cc3-8f8d-8df2adfa5214",
+      "name": "Plan the checks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        640,
+        400
+      ],
+      "parameters": {
+        "jsCode": "// Reads Your settings, checks them, and turns your website list into one item per site.\n// A problem with the settings stops the run here, where n8n shows it in red.\nconst s = $('Your settings').first().json;\n\nconst phone = v => {\n  const raw = String(v || '').trim();\n  const digits = raw.replace(/\\D/g, '');\n  if (raw.startsWith('+') && digits.length >= 8 && digits.length <= 15) return '+' + digits;\n  if (digits.length === 10) return '+1' + digits;\n  if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;\n  return '';\n};\n// Reads a number setting. A blank falls back to the default, but 0 is kept, because 0 switches a check off.\nconst num = (v, d) => (v === '' || v === null || v === undefined || isNaN(Number(v))) ? d : Number(v);\nconst hhmm = (v, d) => /^([01]?\\d|2[0-3]):[0-5]\\d$/.test(String(v || '').trim()) ? String(v).trim() : d;\n\nconst business_number = phone(s.business_number);\nconst owner_cell = phone(s.owner_cell);\nif (!business_number || !owner_cell) {\n  throw new Error('Your settings: business_number and owner_cell must both be phone numbers, like +15551234567.');\n}\nif (['+15555550100', '+15555550199'].includes(business_number) || ['+15555550100', '+15555550199'].includes(owner_cell)) {\n  throw new Error('Your settings: replace the example phone numbers with your Twilio number and your cell before you activate this.');\n}\nconst timezone = String(s.timezone || 'America/New_York').trim();\nif (!DateTime.now().setZone(timezone).isValid) {\n  throw new Error('Your settings: \"' + timezone + '\" is not a time zone n8n knows. Use a name like America/New_York.');\n}\n\nconst cfg = {\n  business_name: String(s.business_name || 'your business').trim(),\n  business_number,\n  owner_cell,\n  timezone,\n  fails_before_alert: Math.max(1, num(s.fails_before_alert, 2)),\n  remind_every_hours: Math.max(0, num(s.remind_every_hours, 4)),\n  balance_floor: Math.max(0, num(s.balance_floor, 20)),\n  block_window_minutes: Math.max(5, num(s.block_window_minutes, 60)),\n  block_alert_count: Math.max(0, num(s.block_alert_count, 3)),\n  quiet_start: hhmm(s.quiet_start, '21:00'),\n  quiet_end: hhmm(s.quiet_end, '07:00'),\n  routing_alerts_at_night: s.routing_alerts_at_night !== false && s.routing_alerts_at_night !== 'false',\n  morning_check_in: s.morning_check_in !== false && s.morning_check_in !== 'false',\n};\n\n// One site per line: \"https://example.com\" or \"https://example.com | text the page must contain\".\nconst sites = String(s.websites || '')\n  .split(/[\\r\\n]+/)\n  .map(line => line.trim())\n  .filter(line => line && !line.startsWith('#'))\n  .map(line => {\n    const [first, ...rest] = line.split('|');\n    let url = first.trim();\n    if (!/^https?:\\/\\//i.test(url)) url = 'https://' + url;\n    const label = url.replace(/^https?:\\/\\//i, '').replace(/\\/$/, '');\n    return { url, label, must_contain: rest.join('|').trim(), valid: /^https?:\\/\\/[a-z0-9-]+(\\.[a-z0-9-]+)+(:\\d+)?(\\/\\S*)?$/i.test(url) };\n  });\n\nif (!sites.length) return [{ json: { watching: false, cfg } }];\nreturn sites.map(site => ({ json: { watching: true, ...site, cfg } }));\n"
+      }
+    },
+    {
+      "id": "7b329caa-fba4-56ab-b8df-9a123a80b3b4",
+      "name": "Watching a website?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        860,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1527021a-dfa4-5c2f-a0f5-64069d658d18",
+              "leftValue": "={{ $json.watching }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "dbe34825-d33a-5ea0-a204-1ac9a616563e",
+      "name": "Check each website",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1080,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "parameters": {
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Mozilla/5.0 (compatible; website-watchdog/1.0)"
+            },
+            {
+              "name": "Cache-Control",
+              "value": "no-cache"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 15000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "text"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "40424dcb-123d-546c-95f5-c8295d74ee27",
+      "name": "Judge the websites",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        400
+      ],
+      "parameters": {
+        "jsCode": "// Turns each website's answer into up or down, with the reason in plain words.\nconst plans = $('Plan the checks').all().map(i => i.json);\nif (!plans[0].watching) return [{ json: { sites: [] } }];\nconst results = $input.all();\n\nconst errText = e => {\n  if (!e) return '';\n  if (typeof e === 'string') return e;\n  return [e.message, e.description, e.code, e.cause && (e.cause.code || e.cause.message)].filter(Boolean).join(' ');\n};\nconst plain = e => {\n  const t = errText(e);\n  if (/ENOTFOUND|EAI_AGAIN|getaddrinfo/i.test(t)) return 'the address does not resolve, which is a domain or DNS problem';\n  if (/CERT|certificate|SSL|TLS|self.signed/i.test(t)) return 'its security certificate failed, expired or not valid';\n  if (/timeout|timed out|ETIMEDOUT|ECONNABORTED/i.test(t)) return 'no answer within 15 seconds';\n  if (/ECONNREFUSED/i.test(t)) return 'the server refused the connection';\n  if (/ECONNRESET|socket hang up/i.test(t)) return 'the connection dropped';\n  const code = t.match(/status code (\\d{3})/i);\n  if (code) return 'the server answered ' + code[1];\n  return 'it could not be reached (' + (t.slice(0, 80) || 'no reason given') + ')';\n};\n\nconst sites = plans.map((p, i) => {\n  const base = { url: p.url, label: p.label };\n  if (!p.valid) return { ...base, ok: false, reason: 'this is not a web address I can check' };\n  const r = (results[i] || {}).json || {};\n  if (r.error) return { ...base, ok: false, reason: plain(r.error) };\n  const code = Number(r.statusCode);\n  if (!code) return { ...base, ok: false, reason: 'no answer' };\n  if (code >= 400) {\n    const kind = code === 404 ? ', page not found' : code >= 500 ? ', a server error' : '';\n    return { ...base, ok: false, reason: 'the server answered ' + code + kind };\n  }\n  if (p.must_contain) {\n    const raw = r.body !== undefined ? r.body : r.data;\n    const body = typeof raw === 'string' ? raw : JSON.stringify(raw || '');\n    if (!body.toLowerCase().includes(p.must_contain.toLowerCase())) {\n      return { ...base, ok: false, reason: 'the page loads but \"' + p.must_contain + '\" is missing from it' };\n    }\n  }\n  return { ...base, ok: true, reason: '' };\n});\n\nreturn [{ json: { sites } }];\n"
+      }
+    },
+    {
+      "id": "60a20783-473a-51ce-83cb-ac1f106edf07",
+      "name": "Find your Twilio account",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1520,
+        400
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.twilio.com/2010-04-01/Accounts.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "Status",
+              "value": "active"
+            },
+            {
+              "name": "PageSize",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "5c857ba0-e5b6-5838-bfd5-9cd98645c2f5",
+      "name": "Your Twilio balance",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1740,
+        400
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{ $('Find your Twilio account').first().json.accounts[0].sid }}/Balance.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "27462e3c-9658-5dc0-9850-ad12146b9117",
+      "name": "How your number is routed",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1960,
+        400
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{ $('Find your Twilio account').first().json.accounts[0].sid }}/IncomingPhoneNumbers.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "PhoneNumber",
+              "value": "={{ $('Plan the checks').first().json.cfg.business_number }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "4e453f1c-797c-50d8-8c3e-94b5e6c4f277",
+      "name": "Texts your number sent",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2180,
+        400
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{ $('Find your Twilio account').first().json.accounts[0].sid }}/Messages.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "={{ $('Plan the checks').first().json.cfg.business_number }}"
+            },
+            {
+              "name": "DateSent>",
+              "value": "={{ $now.setZone('UTC').minus({ days: 1 }).toISODate() }}"
+            },
+            {
+              "name": "PageSize",
+              "value": "1000"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "d8837f80-24d6-5b9e-8837-d247297fdbc4",
+      "name": "Decide what to tell you",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2400,
+        400
+      ],
+      "parameters": {
+        "jsCode": "// Compares this check with what the watchdog remembers and writes the text you get, if any.\n// Its memory is n8n workflow static data. n8n keeps it between runs of an ACTIVE workflow;\n// runs you start by hand in the editor do not save it, so each of those looks like a first run.\nconst cfg = $('Plan the checks').first().json.cfg;\nconst sites = $('Judge the websites').first().json.sites || [];\nconst balance = $('Your Twilio balance').first().json;\nconst routeRes = $('How your number is routed').first().json;\nconst logRes = $('Texts your number sent').first().json;\n\nconst st = $getWorkflowStaticData('global');\nconst now = DateTime.now().setZone(cfg.timezone);\nconst nowIso = now.toISO();\nconst at = iso => DateTime.fromISO(iso).setZone(cfg.timezone);\nconst hoursSince = iso => (iso ? now.diff(at(iso), 'hours').hours : Infinity);\nconst clock = dt => dt.toFormat('h:mm a');\nconst lasted = iso => {\n  const m = Math.max(1, Math.round(now.diff(at(iso), 'minutes').minutes));\n  if (m < 60) return m + ' min';\n  const h = Math.floor(m / 60), r = m % 60;\n  return r ? h + ' h ' + r + ' min' : h + ' h';\n};\nconst money = v => (balance.currency && balance.currency !== 'USD' ? balance.currency + ' ' : '$') + Number(v).toFixed(2).replace(/\\B(?=(\\d{3})+(?!\\d))/g, ',');\n\n// Quiet hours. When start and end are the same there are none.\nconst toMin = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + (m || 0); };\nconst qs = toMin(cfg.quiet_start), qe = toMin(cfg.quiet_end), nowMin = now.hour * 60 + now.minute;\nconst quiet = qs === qe ? false : qs < qe ? (nowMin >= qs && nowMin < qe) : (nowMin >= qs || nowMin < qe);\n\nconst first = !st.started;\nconst today = now.toISODate();\n// The first check at or after the end of quiet hours sends the morning check-in.\nconst morningDue = !first && !quiet && nowMin >= qe && st.morning !== today;\n\nconst out = [];\nst.night = st.night || [];\n// Everything goes through here. In quiet hours anything that is not urgent is kept for the morning.\n// Reminders are skipped in quiet hours and on the morning check-in, which already says what is still wrong.\nconst say = (text, { urgent = false, reminder = false } = {}) => {\n  if (reminder && (quiet || morningDue)) return;\n  if (quiet && !urgent) { st.night.push(clock(now) + ' ' + text); return; }\n  out.push(text);\n};\nconst remindNow = () => !quiet;\n\n// 1. Websites\nst.sites = st.sites || {};\nfor (const s of sites) {\n  const mem = st.sites[s.url] || { fails: 0 };\n  if (s.ok) {\n    if (mem.alerted) say(s.label + ' is back up after ' + lasted(mem.down_since) + '.');\n    st.sites[s.url] = { fails: 0 };\n    continue;\n  }\n  mem.fails = (mem.fails || 0) + 1;\n  mem.down_since = mem.down_since || nowIso;\n  mem.reason = s.reason;\n  if (!mem.alerted && mem.fails >= cfg.fails_before_alert) {\n    say(s.label + ' is down: ' + s.reason + '. First failed check at ' + clock(at(mem.down_since)) + '. I will text you when it is back.');\n    mem.alerted = true;\n    mem.last_alert = nowIso;\n  } else if (mem.alerted && cfg.remind_every_hours > 0 && hoursSince(mem.last_alert) >= cfg.remind_every_hours) {\n    say(s.label + ' is still down, ' + lasted(mem.down_since) + ' so far: ' + s.reason + '.', { reminder: true });\n    if (remindNow()) mem.last_alert = nowIso;\n  }\n  st.sites[s.url] = mem;\n}\n// Forget sites you removed from the list.\nfor (const url of Object.keys(st.sites)) if (!sites.some(s => s.url === url)) delete st.sites[url];\n\n// 2. Twilio balance. At $0 Twilio stops your texts and calls, and these alerts with them.\nconst bal = Number(balance.balance);\nif (Number.isFinite(bal) && cfg.balance_floor > 0) {\n  if (bal < cfg.balance_floor) {\n    if (!st.balance_low) {\n      say('Your Twilio balance is ' + money(bal) + ', under your ' + money(cfg.balance_floor) + ' floor. At $0 your texts and calls stop, and so do these alerts.');\n      st.balance_low = true;\n      st.balance_alert = nowIso;\n    } else if (hoursSince(st.balance_alert) >= 24) {\n      say('Your Twilio balance is still low: ' + money(bal) + '.', { reminder: true });\n      if (remindNow()) st.balance_alert = nowIso;\n    }\n  } else if (st.balance_low) {\n    say('Your Twilio balance is back up to ' + money(bal) + '.');\n    st.balance_low = false;\n  }\n}\n\n// 3. Where your number sends calls and texts. SIDs are shortened and query strings dropped.\nconst mask = v => String(v).replace(/\\b(AC|AP|FW|TK|PN|MG)[0-9a-f]{32}\\b/gi, (m, p) => p + '...' + m.slice(-4));\nconst where = (url, app, trunk) =>\n  trunk ? 'SIP trunk ' + mask(trunk)\n  : app ? 'TwiML app ' + mask(app)\n  : url ? mask(String(url).replace(/^https?:\\/\\//i, '').split('?')[0]).slice(0, 80)\n  : 'nowhere, no handler is set';\n// If Twilio could not be asked, this check is skipped rather than guessed.\nconst routeKnown = !routeRes.error && Array.isArray(routeRes.incoming_phone_numbers);\nconst num = routeKnown ? routeRes.incoming_phone_numbers[0] : null;\nlet route = null;\nif (!routeKnown) {\n  // nothing to compare this time\n} else if (!num) {\n  if (!st.number_missing) {\n    say(cfg.business_number + ' is not on your Twilio account any more. Calls and texts to it are not reaching you. Check the Twilio console now.', { urgent: true });\n    st.number_missing = true;\n  }\n} else {\n  if (st.number_missing) {\n    say(cfg.business_number + ' is back on your Twilio account.', { urgent: true });\n    st.number_missing = false;\n  }\n  route = {\n    calls: where(num.voice_url, num.voice_application_sid, num.trunk_sid),\n    texts: where(num.sms_url, num.sms_application_sid),\n  };\n  if (st.route) {\n    for (const k of ['calls', 'texts']) {\n      if (st.route[k] !== route[k]) {\n        say((k === 'calls' ? 'Calls' : 'Texts') + ' to ' + cfg.business_number + ' used to go to ' + st.route[k] + '. They now go to ' + route[k] + '. If you did not change this, check Twilio now.', { urgent: cfg.routing_alerts_at_night });\n      }\n    }\n  }\n  st.route = route;\n}\n\n// 4. Carrier blocking. Only these errors mean a carrier stopped the text; a wrong or landline\n// number fails on its own and is not a sign of trouble with your line.\nconst BLOCK = {\n  30004: 'message blocked',\n  30007: 'carrier filtering',\n  30032: 'toll-free number not verified',\n  30034: 'number not registered for A2P 10DLC',\n};\nconst logKnown = !logRes.error && Array.isArray(logRes.messages);\nconst windowStart = now.minus({ minutes: cfg.block_window_minutes });\nconst recent = (logKnown ? logRes.messages : []).filter(m =>\n  String(m.direction || '').startsWith('outbound') &&\n  m.to !== cfg.owner_cell &&\n  DateTime.fromRFC2822(String(m.date_created || '')).isValid &&\n  DateTime.fromRFC2822(m.date_created) >= windowStart);\nconst blocked = recent.filter(m => ['failed', 'undelivered'].includes(m.status) && BLOCK[m.error_code]);\nif (cfg.block_alert_count > 0 && blocked.length >= cfg.block_alert_count && hoursSince(st.block_alert) * 60 >= cfg.block_window_minutes) {\n  const counts = {};\n  for (const m of blocked) counts[m.error_code] = (counts[m.error_code] || 0) + 1;\n  const why = Object.entries(counts).map(([c, n]) => c + ' ' + BLOCK[c] + ' (' + n + ')').join(', ');\n  say(blocked.length + ' of the ' + recent.length + ' texts your number sent in the last ' + cfg.block_window_minutes + ' min were blocked by carriers: ' + why + '. Those customers did not get them.');\n  st.block_alert = nowIso;\n}\n\n// Status line for the first run and the morning check-in.\nconst down = sites.filter(s => !s.ok);\nconst status = [\n  !sites.length ? 'no websites watched'\n    : !down.length ? (sites.length === 1 ? 'website up' : 'all ' + sites.length + ' websites up')\n    : down.map(s => s.label + ' down (' + s.reason + ')').join(', '),\n  Number.isFinite(bal) ? 'Twilio balance ' + money(bal) + (cfg.balance_floor > 0 && bal < cfg.balance_floor ? ', under your ' + money(cfg.balance_floor) + ' floor' : '') : 'Twilio balance unknown',\n  route ? 'calls go to ' + route.calls : routeKnown ? cfg.business_number + ' missing from Twilio' : 'routing unknown',\n  logKnown ? blocked.length + ' of ' + recent.length + ' texts blocked in the last ' + cfg.block_window_minutes + ' min' : 'text log unknown',\n].join(', ') + '.';\n\nif (first) {\n  const watching = (sites.length ? sites.map(s => s.label).join(', ') + ', ' : '') + cfg.business_number + ', your Twilio balance and carrier blocking' + (sites.length ? '' : ' (no websites listed)');\n  out.unshift('now on for ' + cfg.business_name + '. Watching ' + watching + '. Right now: ' + status +\n    (cfg.morning_check_in ? ' You get a short check-in each morning at ' + clock(DateTime.fromObject({ hour: Math.floor(qe / 60), minute: qe % 60 })) + '. Otherwise' : ' From here') + ' you only hear from me when something breaks or recovers.');\n  st.started = nowIso;\n  st.morning = today;\n} else if (morningDue) {\n  // What happened overnight, and where things stand.\n  st.morning = today;\n  const lines = [];\n  if (st.night.length) lines.push('Overnight: ' + st.night.join(' '));\n  if (st.night.length || cfg.morning_check_in) lines.push('Right now: ' + status);\n  if (lines.length) out.unshift('Morning check-in. ' + lines.join('\\n'));\n  st.night = [];\n}\n\n// Anything that failed to send last time goes again, for up to 24 hours.\nst.unsent = (st.unsent || []).filter(u => hoursSince(u.at) < 24);\nconst lines = [...st.unsent.map(u => u.text), ...out];\nst.unsent = [...st.unsent, ...out.map(text => ({ text, at: nowIso }))];\nlet body = '';\nif (lines.length === 1) body = 'Watchdog: ' + lines[0];\nif (lines.length > 1) body = 'Watchdog:\\n' + lines.map(l => '- ' + l).join('\\n');\nif (body.length > 1500) body = body.slice(0, 1480) + '... (cut short)';\n\nreturn [{ json: {\n  send: body.length > 0,\n  body,\n  from: cfg.business_number,\n  to: cfg.owner_cell,\n  quiet,\n  first_run: first,\n  status,\n  held_for_morning: st.night.length,\n} }];\n"
+      }
+    },
+    {
+      "id": "33dd69ad-8e53-5779-9aff-75c4d85f00a4",
+      "name": "Anything to tell you?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        2620,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0639dc66-abf6-5d9f-81ee-91a40fe312cb",
+              "leftValue": "={{ $json.send }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "07d2e93d-ab61-5b38-a02f-6d5060c51de9",
+      "name": "Text you",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2840,
+        400
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.twilio.com/2010-04-01/Accounts/{{ $('Find your Twilio account').first().json.accounts[0].sid }}/Messages.json",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "twilioApi",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "From",
+              "value": "={{ $json.from }}"
+            },
+            {
+              "name": "To",
+              "value": "={{ $json.to }}"
+            },
+            {
+              "name": "Body",
+              "value": "={{ $json.body }}"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "3f4a282e-bf88-51cf-8713-be07423d86c4",
+      "name": "Went out?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        3060,
+        400
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c81188de-0379-5cb7-ba14-c44b80cd99db",
+              "leftValue": "={{ !!$json.sid }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "cf15e856-d086-57c3-8338-a15b37388662",
+      "name": "Mark it delivered",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3280,
+        400
+      ],
+      "parameters": {
+        "jsCode": "// The text went out, so nothing is waiting to be retried.\n$getWorkflowStaticData('global').unsent = [];\nreturn [{ json: { delivered: true, sid: $json.sid } }];\n"
+      }
+    },
+    {
+      "id": "dafc9380-4b79-559f-ad7a-ad2917a32754",
+      "name": "Send it again next check",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        3280,
+        620
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "0fd27262-7e68-5ec6-89ce-2ecc8569b897",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        140,
+        -440
+      ],
+      "parameters": {
+        "content": "## Watchdog for your website and business line\n\n**Who it is for:** a service business whose leads come in through a website and a Twilio number. The things that quietly stop those leads never announce themselves: the site goes down, the Twilio balance runs out, someone changes where the number sends calls, or carriers start filtering your texts.\n\n**What it checks, every 5 minutes**\n1. **Your websites.** Each one has to load without an error inside 15 seconds and, if you ask, still contain a piece of text such as your phone number. A failed security certificate counts as down.\n2. **Your Twilio balance.** You hear about it while there is still money on it. At $0 your texts and calls stop, and these alerts would stop with them.\n3. **Where your number sends calls and texts.** If that changes you get the old and the new destination. If the number disappears from your account you hear that too.\n4. **Carrier blocking.** If several texts from your number were blocked in the last hour (Twilio errors 30004, 30007, 30032, 30034), you hear how many and why.\n\n**How it behaves**\n- One blip does not wake you. A site has to fail two checks in a row.\n- One text when something breaks, a reminder every 4 hours while it stays broken, one when it recovers.\n- Quiet hours hold everything except routing changes. The morning check-in then tells you what happened overnight.\n- A watchdog you never hear from looks exactly like one that stopped working, so by default you also get a short check-in each morning. Set morning_check_in to false to stop it.\n- A text that fails to send is tried again on the next check, for up to 24 hours.\n\nNo database. It remembers what it already told you in the workflow's own static data. n8n only keeps that while the workflow is published (active), so test it that way, not with the Execute button.\n\n**Setup**\n1. Select your Twilio credential on the five HTTP Request nodes that talk to Twilio.\n2. Fill in **Your settings**: your Twilio number, your cell, your time zone and your websites, one per line. Put `| some text` after a site to require that text on the page, for example `https://example.com | Call us`.\n3. Publish (activate) it. The first check texts you what it is watching.",
+        "width": 1120,
+        "height": 620,
+        "color": 1
+      }
+    },
+    {
+      "id": "4e610f9c-a660-5c7a-a0b6-dee2a451788f",
+      "name": "Sticky Note4",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        140,
+        640
+      ],
+      "parameters": {
+        "content": "### Trying it out\nSet the schedule to every minute, add a page that does not exist to websites (for example `https://yoursite.com/watchdog-test`) and publish. The first check texts you what it watches, the second tells you that page is down. Set balance_floor above your balance to see the balance alert, then back to 20 to see it clear.\n\nChanged a setting while it is published? Publish again, or the running version keeps the old settings.\n\nWhen you are done, remove the test page and set the schedule back to 5 minutes.",
+        "width": 760,
+        "height": 240,
+        "color": 4
+      }
+    },
+    {
+      "id": "3abd30a9-677e-5e56-bd53-9f6b40419009",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        140,
+        220
+      ],
+      "parameters": {
+        "content": "### 1. Your websites\nEvery 5 minutes each site gets one request with a 15 second limit. Down means no answer, an error code, a failed certificate, or your required text missing from the page.",
+        "width": 1260,
+        "height": 360,
+        "color": 7
+      }
+    },
+    {
+      "id": "6d0f1da6-fc6e-54da-92ae-b9bddd60cb2d",
+      "name": "Sticky Note2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1460,
+        220
+      ],
+      "parameters": {
+        "content": "### 2. Your Twilio line\nFour read only calls to Twilio: which account, the balance, how your number is routed, and the texts it sent since yesterday. Nothing here sends anything. If one of them fails, that check is skipped for this round instead of guessed.",
+        "width": 860,
+        "height": 360,
+        "color": 7
+      }
+    },
+    {
+      "id": "ad220198-7cb7-5085-949e-8187783fecfc",
+      "name": "Sticky Note3",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        2340,
+        220
+      ],
+      "parameters": {
+        "content": "### 3. Decide and text you\nCompares this check with what it remembers and texts you only about changes. Anything that lands in quiet hours waits for the morning check-in. If Twilio will not take the text, it goes again next check.",
+        "width": 1080,
+        "height": 580,
+        "color": 7
+      }
+    }
+  ],
+  "connections": {
+    "Every 5 minutes": {
+      "main": [
+        [
+          {
+            "node": "Your settings",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Your settings": {
+      "main": [
+        [
+          {
+            "node": "Plan the checks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Plan the checks": {
+      "main": [
+        [
+          {
+            "node": "Watching a website?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Watching a website?": {
+      "main": [
+        [
+          {
+            "node": "Check each website",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Judge the websites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check each website": {
+      "main": [
+        [
+          {
+            "node": "Judge the websites",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Judge the websites": {
+      "main": [
+        [
+          {
+            "node": "Find your Twilio account",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find your Twilio account": {
+      "main": [
+        [
+          {
+            "node": "Your Twilio balance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Your Twilio balance": {
+      "main": [
+        [
+          {
+            "node": "How your number is routed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "How your number is routed": {
+      "main": [
+        [
+          {
+            "node": "Texts your number sent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Texts your number sent": {
+      "main": [
+        [
+          {
+            "node": "Decide what to tell you",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decide what to tell you": {
+      "main": [
+        [
+          {
+            "node": "Anything to tell you?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Anything to tell you?": {
+      "main": [
+        [
+          {
+            "node": "Text you",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Text you": {
+      "main": [
+        [
+          {
+            "node": "Went out?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Went out?": {
+      "main": [
+        [
+          {
+            "node": "Mark it delivered",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send it again next check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "meta": {
+    "templateCredsSetupCompleted": false
+  }
+}
