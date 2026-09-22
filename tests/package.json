@@ -1,0 +1,8 @@
+{
+  "name": "watchdog-tests",
+  "private": true,
+  "description": "Checks for the watchdog workflow. Run: npm install && node watchdog.test.js",
+  "dependencies": {
+    "luxon": "^3.5.0"
+  }
+}
